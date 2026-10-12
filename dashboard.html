@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FSM Traffic Light Simulator</title>
+<style>
+:root{--bg:#eef0f2;--fg:#15191d;--card:#fff;--mut:#667;--line:#cfd5da;--box:#1b2024;--off:#2e353b;--r:#ff3b30;--y:#ffc400;--g:#22d36b;--w:#3aa0ff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101316;--fg:#e8ecef;--card:#181d21;--mut:#8b96a0;--line:#2b333a}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Trebuchet MS",system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:20px;display:grid;gap:16px;grid-template-columns:200px 1fr}
+@media(max-width:640px){main{grid-template-columns:1fr}}
+h1{grid-column:1/-1;margin:0;font-size:24px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+.signal{background:var(--box);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;align-items:center;width:96px;margin:0 auto}
+.lamp{width:56px;height:56px;border-radius:50%;background:var(--off);transition:background .15s,box-shadow .15s}
+.lamp.on.r{background:var(--r);box-shadow:0 0 24px var(--r)}.lamp.on.y{background:var(--y);box-shadow:0 0 24px var(--y)}.lamp.on.g{background:var(--g);box-shadow:0 0 24px var(--g)}
+.walk{margin-top:12px;text-align:center;color:var(--mut)}
+.walk i{display:inline-block;width:18px;height:18px;border-radius:50%;background:var(--off);vertical-align:middle;margin-right:6px}
+.walk.on i{background:var(--w);box-shadow:0 0 12px var(--w)}.walk.on{color:var(--fg)}
+.states{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{padding:6px 12px;border:1.5px solid var(--line);border-radius:6px;font-weight:700}
+.chip.act{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:8px 0 14px}
+.bar b{display:block;height:100%;width:0;background:var(--fg)}
+button{font:inherit;padding:8px 14px;border-radius:6px;border:1.5px solid var(--fg);background:var(--card);color:var(--fg);cursor:pointer}
+button.p{background:var(--fg);color:var(--bg)}button:focus-visible{outline:3px solid var(--w);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+pre{margin:0;height:150px;overflow:auto;font:13px/1.5 ui-monospace,Consolas,monospace;background:var(--bg);border-radius:6px;padding:10px}
+.mut{color:var(--mut);font-size:13px}
+</style></head><body>
+<main>
+<h1>FSM Traffic Light Simulator</h1>
+<div class="panel"><div class="signal"><div class="lamp r" id="r"></div><div class="lamp y" id="y"></div><div class="lamp g" id="g"></div></div>
+<div class="walk" id="w"><i></i>Walk</div></div>
+<div class="panel">
+<div class="states" id="chips"></div>
+<div class="mut" id="info"></div><div class="bar"><b id="bar"></b></div>
+<div class="row"><button class="p" id="ped">Press pedestrian button</button>
+<button id="pause">Pause</button>
+<label class="mut">Speed <input type="range" id="spd" min="1" max="8" value="1"> <span id="sv">1x</span></label></div>
+<p class="mut" id="ped-s">No pedestrian request queued.</p>
+<pre id="log" aria-live="polite"></pre>
+<p class="mut">Same timings and rules as <code>traffic_light.ino</code>: RED 5s, GREEN 6s (2s minimum when a request is queued), YELLOW 2s, WALK 4s.</p>
+</div></main>
+<script>
+const T={RED:5000,GREEN:6000,YELLOW:2000,WALK:4000},MIN_GREEN=2000;
+let state,elapsed=0,ped=false,paused=false,speed=1,last=performance.now();
+const $=id=>document.getElementById(id),logEl=$('log');
+$('chips').innerHTML=Object.keys(T).map(s=>`<span class="chip" id="c-${s}">${s}</span>`).join('');
+function log(m){logEl.textContent+=m+"\n";logEl.scrollTop=logEl.scrollHeight}
+function enter(s){state=s;elapsed=0;if(s==='WALK')ped=false;
+ $('r').classList.toggle('on',s==='RED'||s==='WALK');$('y').classList.toggle('on',s==='YELLOW');$('g').classList.toggle('on',s==='GREEN');
+ $('w').classList.toggle('on',s==='WALK');
+ for(const k in T)$('c-'+k).classList.toggle('act',k===s);
+ $('ped-s').textContent=ped?'Pedestrian request queued.':'No pedestrian request queued.';
+ log('State -> '+s)}
+function limit(){return state==='GREEN'&&ped?MIN_GREEN:T[state]}
+function step(dt){elapsed+=dt*speed;
+ if(elapsed>=limit()){
+  if(state==='RED')enter('GREEN');else if(state==='GREEN')enter('YELLOW');
+  else if(state==='YELLOW')enter(ped?'WALK':'RED');else enter('RED')}
+ $('bar').style.width=Math.min(100,elapsed/limit()*100)+'%';
+ $('info').textContent=state+': '+(elapsed/1000).toFixed(1)+' / '+(limit()/1000).toFixed(1)+' s'}
+function tick(n){const dt=n-last;last=n;if(!paused)step(dt);requestAnimationFrame(tick)}
+$('ped').onclick=()=>{if(state==='WALK')return;ped=true;$('ped-s').textContent='Pedestrian request queued.';log('Pedestrian request queued')};
+$('pause').onclick=e=>{paused=!paused;e.target.textContent=paused?'Resume':'Pause'};
+$('spd').oninput=e=>{speed=+e.target.value;$('sv').textContent=speed+'x'};
+enter('RED');requestAnimationFrame(tick);
+</script></body></html>
